@@ -18,7 +18,10 @@ package org.tensorflow.lite.examples.poseestimation.ml
 
 import android.content.Context
 import android.graphics.*
+import android.os.Build
 import android.os.SystemClock
+import androidx.annotation.RequiresApi
+import androidx.core.graphics.minus
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.examples.poseestimation.data.*
@@ -29,9 +32,12 @@ import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 import org.tensorflow.lite.support.image.ops.ResizeWithCropOrPadOp
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import java.lang.Math.toDegrees
 import kotlin.math.abs
+import kotlin.math.acos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 enum class ModelType {
     Lightning,
@@ -91,6 +97,7 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
     private val inputHeight = interpreter.getInputTensor(0).shape()[2]
     private var outputShape: IntArray = interpreter.getOutputTensor(0).shape()
 
+    @RequiresApi(Build.VERSION_CODES.N)
     override fun estimatePoses(bitmap: Bitmap): List<Person> {
         val inferenceStartTimeNanos = SystemClock.elapsedRealtimeNanos()
         if (cropRegion == null) {
@@ -126,29 +133,74 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
 
             val positions = mutableListOf<Float>()
 
+            val bodyPartToXY = HashMap<BodyPart, PointF>()
+            val jointToAngle = HashMap<String, Double>()
+
             inputTensor?.let { input ->
                 interpreter.run(input.buffer, outputTensor.buffer.rewind())
                 val output = outputTensor.floatArray
-                for (idx in 0 until numKeyPoints) {
+                for (idx in 0 until numKeyPoints) { // numKeyPoints = 17.
                     val x = output[idx * 3 + 1] * inputWidth * widthRatio
                     val y = output[idx * 3 + 0] * inputHeight * heightRatio
 
                     positions.add(x)
                     positions.add(y)
+
                     val score = output[idx * 3 + 2]
-                    keyPoints.add(
-                        KeyPoint(
-                            BodyPart.fromInt(idx),
-                            PointF(
-                                x,
-                                y
-                            ),
-                            score
-                        )
-                    )
+                    keyPoints.add(KeyPoint(BodyPart.fromInt(idx), PointF(x, y), score))
                     totalScore += score
+
+                    bodyPartToXY[BodyPart.fromInt(idx)] = PointF(x, y)
                 }
             }
+
+            // Calculate joint angles.
+            val calculateAngle: (PointF, PointF) -> Double = { ba, bc ->
+                val dotProduct = ba.x * bc.x + ba.y * bc.y
+                val normBC = sqrt(bc.x * bc.x + bc.y * bc.y)
+                val normBA = sqrt(ba.x * ba.y + ba.y * ba.y)
+                val cosineAngle = dotProduct / (normBA * normBC)
+                toDegrees(acos(cosineAngle).toDouble())
+            }
+
+            bodyPartToXY.let {
+                var ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_ELBOW]!!)
+                var bc = it[BodyPart.LEFT_WRIST]?.minus(it[BodyPart.LEFT_ELBOW]!!)
+                if (ba != null && bc != null) jointToAngle["leftElbow"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.LEFT_ELBOW]?.minus(it[BodyPart.LEFT_SHOULDER]!!)
+                bc = it[BodyPart.LEFT_HIP]?.minus(it[BodyPart.LEFT_SHOULDER]!!)
+                if (ba != null && bc != null) jointToAngle["leftShoulder"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_HIP]!!)
+                bc = it[BodyPart.LEFT_KNEE]?.minus(it[BodyPart.LEFT_HIP]!!)
+                if (ba != null && bc != null) jointToAngle["leftHip"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.LEFT_HIP]?.minus(it[BodyPart.LEFT_KNEE]!!)
+                bc = it[BodyPart.LEFT_ANKLE]?.minus(it[BodyPart.LEFT_KNEE]!!)
+                if (ba != null && bc != null) jointToAngle["leftKnee"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.RIGHT_SHOULDER]?.minus(it[BodyPart.RIGHT_ELBOW]!!)
+                bc = it[BodyPart.RIGHT_WRIST]?.minus(it[BodyPart.RIGHT_ELBOW]!!)
+                if (ba != null && bc != null) jointToAngle["rightElbow"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.RIGHT_ELBOW]?.minus(it[BodyPart.RIGHT_SHOULDER]!!)
+                bc = it[BodyPart.RIGHT_HIP]?.minus(it[BodyPart.RIGHT_SHOULDER]!!)
+                if (ba != null && bc != null) jointToAngle["rightShoulder"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.RIGHT_SHOULDER]?.minus(it[BodyPart.RIGHT_HIP]!!)
+                bc = it[BodyPart.RIGHT_KNEE]?.minus(it[BodyPart.RIGHT_HIP]!!)
+                if (ba != null && bc != null) jointToAngle["rightHip"] = calculateAngle(ba, bc)
+
+                ba = it[BodyPart.RIGHT_HIP]?.minus(it[BodyPart.RIGHT_KNEE]!!)
+                bc = it[BodyPart.RIGHT_ANKLE]?.minus(it[BodyPart.RIGHT_KNEE]!!)
+                if (ba != null && bc != null) jointToAngle["rightKnee"] = calculateAngle(ba, bc)
+            }
+
+            jointToAngle.forEach { (jointName, angle) ->
+                println("Joint angle for joint $jointName is $angle degrees.")
+            }
+
             val matrix = Matrix()
             val points = positions.toFloatArray()
 
