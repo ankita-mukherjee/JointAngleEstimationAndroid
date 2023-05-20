@@ -107,6 +107,15 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
 
         val numKeyPoints = outputShape[2]
         val keyPoints = mutableListOf<KeyPoint>()
+        val jointToAngle = HashMap<String, Float>()
+
+        val calculateAngle: (PointF, PointF) -> Float = { ba, bc ->
+            val dotProduct = ba.x * bc.x + ba.y * bc.y
+            val normBC = sqrt(bc.x * bc.x + bc.y * bc.y)
+            val normBA = sqrt(ba.x * ba.y + ba.y * ba.y)
+            val cosineAngle = dotProduct / (normBA * normBC)
+            toDegrees(acos(cosineAngle).toDouble()).toFloat()
+        }
 
         cropRegion?.run {
             val rect = RectF(
@@ -134,7 +143,6 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
             val positions = mutableListOf<Float>()
 
             val bodyPartToXY = HashMap<BodyPart, PointF>()
-            val jointToAngle = HashMap<String, Double>()
 
             inputTensor?.let { input ->
                 interpreter.run(input.buffer, outputTensor.buffer.rewind())
@@ -155,14 +163,6 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
             }
 
             // Calculate joint angles.
-            val calculateAngle: (PointF, PointF) -> Double = { ba, bc ->
-                val dotProduct = ba.x * bc.x + ba.y * bc.y
-                val normBC = sqrt(bc.x * bc.x + bc.y * bc.y)
-                val normBA = sqrt(ba.x * ba.y + ba.y * ba.y)
-                val cosineAngle = dotProduct / (normBA * normBC)
-                toDegrees(acos(cosineAngle).toDouble())
-            }
-
             bodyPartToXY.let {
                 var ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_ELBOW]!!)
                 var bc = it[BodyPart.LEFT_WRIST]?.minus(it[BodyPart.LEFT_ELBOW]!!)
@@ -197,10 +197,6 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
                 if (ba != null && bc != null) jointToAngle["rightKnee"] = calculateAngle(ba, bc)
             }
 
-            jointToAngle.forEach { (jointName, angle) ->
-                println("Joint angle for joint $jointName is $angle degrees.")
-            }
-
             val matrix = Matrix()
             val points = positions.toFloatArray()
 
@@ -218,7 +214,13 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
         }
         lastInferenceTimeNanos =
             SystemClock.elapsedRealtimeNanos() - inferenceStartTimeNanos
-        return listOf(Person(keyPoints = keyPoints, score = totalScore / numKeyPoints))
+        return listOf(
+            Person(
+                keyPoints = keyPoints,
+                score = totalScore / numKeyPoints,
+                jointToAngle = jointToAngle
+            )
+        )
     }
 
     override fun lastInferenceTimeNanos(): Long = lastInferenceTimeNanos
