@@ -60,6 +60,28 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
         private const val LIGHTNING_FILENAME = "movenet_lightning.tflite"
         private const val THUNDER_FILENAME = "movenet_thunder.tflite"
 
+        private val INTERCEPTS: HashMap<String, Double> = hashMapOf(
+            "shoabd" to 8.766180213838261,
+            "shoflex" to 18.582027934758237,
+            "shoext" to 19.141679991541952,
+            "elbflex" to -5.739176564877553,
+            "hipabd" to 1.0,
+            "hipflex" to 1.0,
+            "hipext" to 1.0,
+            "kneeflex" to 1.0
+        )
+
+        private val COEFFICIENTS: HashMap<String, Double> = hashMapOf(
+            "shoabd" to 0.7965293931770755,
+            "shoflex" to 0.6162105709567219,
+            "shoext" to 0.8246886287763818,
+            "elbflex" to 0.9927441984883095,
+            "hipabd" to 1.0,
+            "hipflex" to 1.0,
+            "hipext" to 1.0,
+            "kneeflex" to 1.0
+        )
+
         // allow specifying model type.
         fun create(context: Context, device: Device, modelType: ModelType): MoveNet {
             val options = Interpreter.Options()
@@ -109,12 +131,13 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
         val keyPoints = mutableListOf<KeyPoint>()
         val jointToAngle = HashMap<String, Float>()
 
-        val calculateAngle: (PointF, PointF) -> Float = { ba, bc ->
+        val calculateAngle: (PointF, PointF, Double, Double) -> Float = { ba, bc, intercept, coef ->
             val dotProduct = ba.x * bc.x + ba.y * bc.y
             val normBC = sqrt(bc.x * bc.x + bc.y * bc.y)
             val normBA = sqrt(ba.x * ba.y + ba.y * ba.y)
             val cosineAngle = dotProduct / (normBA * normBC)
-            toDegrees(acos(cosineAngle).toDouble()).toFloat()
+            val predAngle = intercept + toDegrees(acos(cosineAngle).toDouble()) * coef
+            predAngle.toFloat()
         }
 
         cropRegion?.run {
@@ -166,35 +189,75 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
             bodyPartToXY.let {
                 var ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_ELBOW]!!)
                 var bc = it[BodyPart.LEFT_WRIST]?.minus(it[BodyPart.LEFT_ELBOW]!!)
-                if (ba != null && bc != null) jointToAngle["leftElbow"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["leftElbow"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["elbflex"]!!,
+                        COEFFICIENTS["elbflex"]!!
+                    )
 
                 ba = it[BodyPart.LEFT_ELBOW]?.minus(it[BodyPart.LEFT_SHOULDER]!!)
                 bc = it[BodyPart.LEFT_HIP]?.minus(it[BodyPart.LEFT_SHOULDER]!!)
-                if (ba != null && bc != null) jointToAngle["leftShoulder"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["leftShoulder"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["shoflex"]!!,
+                        COEFFICIENTS["shoflex"]!!
+                    )
 
                 ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_HIP]!!)
                 bc = it[BodyPart.LEFT_KNEE]?.minus(it[BodyPart.LEFT_HIP]!!)
-                if (ba != null && bc != null) jointToAngle["leftHip"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["leftHip"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["hipabd"]!!,
+                        COEFFICIENTS["hipabd"]!!
+                    )
 
                 ba = it[BodyPart.LEFT_HIP]?.minus(it[BodyPart.LEFT_KNEE]!!)
                 bc = it[BodyPart.LEFT_ANKLE]?.minus(it[BodyPart.LEFT_KNEE]!!)
-                if (ba != null && bc != null) jointToAngle["leftKnee"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["leftKnee"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["kneeflex"]!!,
+                        COEFFICIENTS["kneeflex"]!!
+                    )
 
                 ba = it[BodyPart.RIGHT_SHOULDER]?.minus(it[BodyPart.RIGHT_ELBOW]!!)
                 bc = it[BodyPart.RIGHT_WRIST]?.minus(it[BodyPart.RIGHT_ELBOW]!!)
-                if (ba != null && bc != null) jointToAngle["rightElbow"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["rightElbow"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["elbflex"]!!,
+                        COEFFICIENTS["elbflex"]!!
+                    )
 
                 ba = it[BodyPart.RIGHT_ELBOW]?.minus(it[BodyPart.RIGHT_SHOULDER]!!)
                 bc = it[BodyPart.RIGHT_HIP]?.minus(it[BodyPart.RIGHT_SHOULDER]!!)
-                if (ba != null && bc != null) jointToAngle["rightShoulder"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["rightShoulder"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["shoflex"]!!,
+                        COEFFICIENTS["shoflex"]!!
+                    )
 
                 ba = it[BodyPart.RIGHT_SHOULDER]?.minus(it[BodyPart.RIGHT_HIP]!!)
                 bc = it[BodyPart.RIGHT_KNEE]?.minus(it[BodyPart.RIGHT_HIP]!!)
-                if (ba != null && bc != null) jointToAngle["rightHip"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["rightHip"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["hipabd"]!!,
+                        COEFFICIENTS["hipabd"]!!
+                    )
 
                 ba = it[BodyPart.RIGHT_HIP]?.minus(it[BodyPart.RIGHT_KNEE]!!)
                 bc = it[BodyPart.RIGHT_ANKLE]?.minus(it[BodyPart.RIGHT_KNEE]!!)
-                if (ba != null && bc != null) jointToAngle["rightKnee"] = calculateAngle(ba, bc)
+                if (ba != null && bc != null)
+                    jointToAngle["rightKnee"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["kneeflex"]!!,
+                        COEFFICIENTS["kneeflex"]!!
+                    )
             }
 
             val matrix = Matrix()
