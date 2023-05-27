@@ -20,6 +20,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import org.tensorflow.lite.examples.poseestimation.data.BodyPart
 import org.tensorflow.lite.examples.poseestimation.data.Person
 import kotlin.math.max
@@ -70,10 +71,18 @@ object VisualizationUtils {
             color = Color.RED
             style = Paint.Style.FILL
         }
+
         val paintLine = Paint().apply {
             strokeWidth = LINE_WIDTH
             color = Color.RED
             style = Paint.Style.STROKE
+        }
+
+        val paintAngleText = Paint().apply {
+            textSize = 15f
+            color = Color.BLACK
+            textAlign = Paint.Align.LEFT
+            typeface = Typeface.DEFAULT_BOLD
         }
 
         val paintText = Paint().apply {
@@ -100,6 +109,21 @@ object VisualizationUtils {
                     originalSizeCanvas.drawRect(it, paintLine)
                 }
             }
+
+            // Show joint angles on Canvas.
+            var y = 5f
+            person.jointToAngle?.forEach { (jointName, jointAngle) ->
+                val yDiff = 150f / person.jointToAngle.size
+                val roundedDegree = String.format("%.2f°", jointAngle)
+                originalSizeCanvas.drawText(
+                    "$jointName: $roundedDegree",
+                    10f,
+                    y + yDiff,
+                    paintAngleText
+                )
+                y += yDiff
+            }
+
             bodyJoints.forEach {
                 val pointA = person.keyPoints[it.first.position].coordinate
                 val pointB = person.keyPoints[it.second.position].coordinate
