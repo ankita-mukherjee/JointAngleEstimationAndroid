@@ -65,10 +65,10 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
             "shoflex" to 18.582027934758237,
             "shoext" to 19.141679991541952,
             "elbflex" to -5.739176564877553,
-            "hipabd" to 1.0,
-            "hipflex" to 1.0,
-            "hipext" to 1.0,
-            "kneeflex" to 1.0
+            "hipabd" to 35.47208356016854,
+            "hipflex" to 99.11530075690126,
+            "hipext" to 23.765319920430954,
+            "kneeflex" to 5.02104718633808
         )
 
         private val COEFFICIENTS: HashMap<String, Double> = hashMapOf(
@@ -76,10 +76,10 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
             "shoflex" to 0.6162105709567219,
             "shoext" to 0.8246886287763818,
             "elbflex" to 0.9927441984883095,
-            "hipabd" to 1.0,
-            "hipflex" to 1.0,
-            "hipext" to 1.0,
-            "kneeflex" to 1.0
+            "hipabd" to 0.7123440406268039,
+            "hipflex" to 0.350340881927831,
+            "hipext" to 0.7566034116148802,
+            "kneeflex" to 0.9651127014683116
         )
 
         // allow specifying model type.
