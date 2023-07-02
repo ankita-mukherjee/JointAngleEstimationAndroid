@@ -1,0 +1,10 @@
+<resources>
+    <!-- Base application theme. -->
+<style name="Theme.MaterialBottomNavigationMenu" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <!-- Customize your theme here. -->
+    <item name="colorPrimary">@color/blue</item>
+    <item name="colorPrimaryDark">@color/blue</item>
+    <item name="colorAccent">@color/blue</item>
+</style>
+
+    </resources>
