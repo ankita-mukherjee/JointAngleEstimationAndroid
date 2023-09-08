@@ -18,7 +18,10 @@ package org.tensorflow.lite.examples.poseestimation.ml
 
 import android.content.Context
 import android.graphics.*
+import android.os.Build
 import android.os.SystemClock
+import androidx.annotation.RequiresApi
+import androidx.core.graphics.minus
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.examples.poseestimation.data.*
@@ -29,9 +32,12 @@ import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 import org.tensorflow.lite.support.image.ops.ResizeWithCropOrPadOp
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import java.lang.Math.toDegrees
 import kotlin.math.abs
+import kotlin.math.acos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 enum class ModelType {
     Lightning,
@@ -53,6 +59,28 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
         // TFLite file names.
         private const val LIGHTNING_FILENAME = "movenet_lightning.tflite"
         private const val THUNDER_FILENAME = "movenet_thunder.tflite"
+
+        private val INTERCEPTS: HashMap<String, Double> = hashMapOf(
+            "shoabd" to 8.766180213838261,
+            "shoflex" to 18.582027934758237,
+            "shoext" to 19.141679991541952,
+            "elbflex" to -5.739176564877553,
+            "hipabd" to 35.47208356016854,
+            "hipflex" to 99.11530075690126,
+            "hipext" to 23.765319920430954,
+            "kneeflex" to 5.02104718633808
+        )
+
+        private val COEFFICIENTS: HashMap<String, Double> = hashMapOf(
+            "shoabd" to 0.7965293931770755,
+            "shoflex" to 0.6162105709567219,
+            "shoext" to 0.8246886287763818,
+            "elbflex" to 0.9927441984883095,
+            "hipabd" to 0.7123440406268039,
+            "hipflex" to 0.350340881927831,
+            "hipext" to 0.7566034116148802,
+            "kneeflex" to 0.9651127014683116
+        )
 
         // allow specifying model type.
         fun create(context: Context, device: Device, modelType: ModelType): MoveNet {
@@ -91,6 +119,7 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
     private val inputHeight = interpreter.getInputTensor(0).shape()[2]
     private var outputShape: IntArray = interpreter.getOutputTensor(0).shape()
 
+    @RequiresApi(Build.VERSION_CODES.N)
     override fun estimatePoses(bitmap: Bitmap): List<Person> {
         val inferenceStartTimeNanos = SystemClock.elapsedRealtimeNanos()
         if (cropRegion == null) {
@@ -100,6 +129,16 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
 
         val numKeyPoints = outputShape[2]
         val keyPoints = mutableListOf<KeyPoint>()
+        val jointToAngle = HashMap<String, Float>()
+
+        val calculateAngle: (PointF, PointF, Double, Double) -> Float = { ba, bc, intercept, coef ->
+            val dotProduct = ba.x * bc.x + ba.y * bc.y
+            val normBC = sqrt(bc.x * bc.x + bc.y * bc.y)
+            val normBA = sqrt(ba.x * ba.y + ba.y * ba.y)
+            val cosineAngle = dotProduct / (normBA * normBC)
+            val predAngle = intercept + toDegrees(acos(cosineAngle).toDouble()) * coef
+            predAngle.toFloat()
+        }
 
         cropRegion?.run {
             val rect = RectF(
@@ -126,29 +165,101 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
 
             val positions = mutableListOf<Float>()
 
+            val bodyPartToXY = HashMap<BodyPart, PointF>()
+
             inputTensor?.let { input ->
                 interpreter.run(input.buffer, outputTensor.buffer.rewind())
                 val output = outputTensor.floatArray
-                for (idx in 0 until numKeyPoints) {
+                for (idx in 0 until numKeyPoints) { // numKeyPoints = 17.
                     val x = output[idx * 3 + 1] * inputWidth * widthRatio
                     val y = output[idx * 3 + 0] * inputHeight * heightRatio
 
                     positions.add(x)
                     positions.add(y)
+
                     val score = output[idx * 3 + 2]
-                    keyPoints.add(
-                        KeyPoint(
-                            BodyPart.fromInt(idx),
-                            PointF(
-                                x,
-                                y
-                            ),
-                            score
-                        )
-                    )
+                    keyPoints.add(KeyPoint(BodyPart.fromInt(idx), PointF(x, y), score))
                     totalScore += score
+
+                    bodyPartToXY[BodyPart.fromInt(idx)] = PointF(x, y)
                 }
             }
+
+            // Calculate joint angles.
+            bodyPartToXY.let {
+                var ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_ELBOW]!!)
+                var bc = it[BodyPart.LEFT_WRIST]?.minus(it[BodyPart.LEFT_ELBOW]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["leftElbow"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["elbflex"]!!,
+                        COEFFICIENTS["elbflex"]!!
+                    )
+
+                ba = it[BodyPart.LEFT_ELBOW]?.minus(it[BodyPart.LEFT_SHOULDER]!!)
+                bc = it[BodyPart.LEFT_HIP]?.minus(it[BodyPart.LEFT_SHOULDER]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["leftShoulder"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["shoflex"]!!,
+                        COEFFICIENTS["shoflex"]!!
+                    )
+
+                ba = it[BodyPart.LEFT_SHOULDER]?.minus(it[BodyPart.LEFT_HIP]!!)
+                bc = it[BodyPart.LEFT_KNEE]?.minus(it[BodyPart.LEFT_HIP]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["leftHip"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["hipabd"]!!,
+                        COEFFICIENTS["hipabd"]!!
+                    )
+
+                ba = it[BodyPart.LEFT_HIP]?.minus(it[BodyPart.LEFT_KNEE]!!)
+                bc = it[BodyPart.LEFT_ANKLE]?.minus(it[BodyPart.LEFT_KNEE]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["leftKnee"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["kneeflex"]!!,
+                        COEFFICIENTS["kneeflex"]!!
+                    )
+
+                ba = it[BodyPart.RIGHT_SHOULDER]?.minus(it[BodyPart.RIGHT_ELBOW]!!)
+                bc = it[BodyPart.RIGHT_WRIST]?.minus(it[BodyPart.RIGHT_ELBOW]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["rightElbow"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["elbflex"]!!,
+                        COEFFICIENTS["elbflex"]!!
+                    )
+
+                ba = it[BodyPart.RIGHT_ELBOW]?.minus(it[BodyPart.RIGHT_SHOULDER]!!)
+                bc = it[BodyPart.RIGHT_HIP]?.minus(it[BodyPart.RIGHT_SHOULDER]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["rightShoulder"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["shoflex"]!!,
+                        COEFFICIENTS["shoflex"]!!
+                    )
+
+                ba = it[BodyPart.RIGHT_SHOULDER]?.minus(it[BodyPart.RIGHT_HIP]!!)
+                bc = it[BodyPart.RIGHT_KNEE]?.minus(it[BodyPart.RIGHT_HIP]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["rightHip"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["hipabd"]!!,
+                        COEFFICIENTS["hipabd"]!!
+                    )
+
+                ba = it[BodyPart.RIGHT_HIP]?.minus(it[BodyPart.RIGHT_KNEE]!!)
+                bc = it[BodyPart.RIGHT_ANKLE]?.minus(it[BodyPart.RIGHT_KNEE]!!)
+                if (ba != null && bc != null)
+                    jointToAngle["rightKnee"] = calculateAngle(
+                        ba, bc,
+                        INTERCEPTS["kneeflex"]!!,
+                        COEFFICIENTS["kneeflex"]!!
+                    )
+            }
+
             val matrix = Matrix()
             val points = positions.toFloatArray()
 
@@ -166,7 +277,13 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
         }
         lastInferenceTimeNanos =
             SystemClock.elapsedRealtimeNanos() - inferenceStartTimeNanos
-        return listOf(Person(keyPoints = keyPoints, score = totalScore / numKeyPoints))
+        return listOf(
+            Person(
+                keyPoints = keyPoints,
+                score = totalScore / numKeyPoints,
+                jointToAngle = jointToAngle
+            )
+        )
     }
 
     override fun lastInferenceTimeNanos(): Long = lastInferenceTimeNanos
