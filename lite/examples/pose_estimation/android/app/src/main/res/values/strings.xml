@@ -1,16 +1,15 @@
 <resources>
-    <string name="tfe_pe_app_name">Joint Estimation</string>
+    <string name="tfe_pe_app_name">TFL Pose Estimation</string>
     <string name="tfe_pe_request_permission">This app needs camera permission.</string>
     <string name="tfe_pe_tv_score">Score: %.2f</string>
-    <string name="tfe_pe_tv_model">Model: </string>s
+    <string name="tfe_pe_tv_model">Model: </string>
     <string name="tfe_pe_tv_fps">Fps: %d</string>
+    <string name="tfe_pe_tv_mem_mb">Memory Usage (MB): %d</string>
     <string name="tfe_pe_tv_device">Device: </string>
-    <string name="tfe_pe_tv_movement">Movements:</string>
     <string name="tfe_pe_tv_classification_value">- %s</string>
     <string name="tfe_pe_tv_pose_classification">Pose Classification</string>
     <string name="tfe_pe_tv_tracking">Tracker: </string>
     <string name="tfe_pe_gpu_error">Movenet MultiPose does not support GPU. Fallback to CPU.</string>
-
     <string-array name="tfe_pe_models_array">
         <item>Movenet Lightning</item>
         <item>Movenet Thunder</item>
@@ -24,29 +23,9 @@
         <item>NNAPI</item>
     </string-array>
 
-    <string-array name="tfe_pe_movements_name">
-        <item>Elbow_Flexion</item>
-        <item>Shoulder_Abduction</item>
-        <item>Shoulder_Extension</item>
-        <item>Shoulder_Flexion</item>
-    </string-array>
-
-    <string name="elbow_flexion">Elbow Flexion</string>
-    <string name="shoulder_abduction">Shoulder Abduction</string>
-    <string name="shoulder_extension">Shoulder Extension</string>
-    <string name="shoulder_flexion">Shoulder Flexion</string>
-
     <string-array name="tfe_pe_tracker_array">
         <item>Off</item>
         <item>BoundingBox</item>
         <item>Keypoint</item>
     </string-array>
-
-    <string name="Home">Home</string>
-    <string name="Activities">Activities</string>
-    <string name="Stats">Stats</string>
-    <string name="Network">Network</string>
-    <string name="Account">Account</string>
-    <!-- TODO: Remove or change this placeholder text -->
-    <string name="hello_blank_fragment">Hello blank fragment</string>
 </resources>

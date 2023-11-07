@@ -69,6 +69,7 @@ class CameraSource(
     private var fpsTimer: Timer? = null
     private var frameProcessedInOneSecondInterval = 0
     private var framesPerSecond = 0
+    private var memoryUsageMB = 0L
 
     /** Detects, characterizes, and connects to a CameraDevice (used for all camera operations) */
     private val cameraManager: CameraManager by lazy {
@@ -214,6 +215,11 @@ class CameraSource(
                 override fun run() {
                     framesPerSecond = frameProcessedInOneSecondInterval
                     frameProcessedInOneSecondInterval = 0
+
+                    val runtime = Runtime.getRuntime()
+                    memoryUsageMB = (runtime.totalMemory() - runtime.freeMemory()) / 1048576L;
+                    /*println("Memory Usage: %d MB".format(memoryUsageMB))*/
+
                 }
             },
             0,
@@ -237,6 +243,7 @@ class CameraSource(
         fpsTimer = null
         frameProcessedInOneSecondInterval = 0
         framesPerSecond = 0
+        memoryUsageMB = 0
     }
 
     // process image
@@ -259,7 +266,7 @@ class CameraSource(
         frameProcessedInOneSecondInterval++
         if (frameProcessedInOneSecondInterval == 1) {
             // send fps to view
-            listener?.onFPSListener(framesPerSecond)
+            listener?.onFPSListener(framesPerSecond, memoryUsageMB)
         }
 
         // if the model returns only one item, show that item's score.
@@ -320,7 +327,7 @@ class CameraSource(
     }
 
     interface CameraSourceListener {
-        fun onFPSListener(fps: Int)
+        fun onFPSListener(fps: Int, mem_mb: Long)
 
         fun onDetectedInfo(personScore: Float?, poseLabels: List<Pair<String, Float>>?)
     }
