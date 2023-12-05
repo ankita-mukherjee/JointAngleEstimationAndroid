@@ -20,6 +20,7 @@ import android.content.Context
 import android.graphics.*
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.minus
 import org.tensorflow.lite.DataType
@@ -71,14 +72,14 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
 //            "hipext" to 23.765319920430954,
 //            "kneeflex" to 5.02104718633808,
 
-        //Non- linear model
+            //Non- linear model
             "shoabd" to 11.682313403366742,
             "shoflex" to 22.76828402868039,
             "shoext" to 21.473304496313325,
             "elbflex" to 28.905730477585266
         )
 
-       // private val COEFFICIENTS: HashMap<String, Double> = hashMapOf(
+        // private val COEFFICIENTS: HashMap<String, Double> = hashMapOf(
 
 //            "shoabd" to 0.7965293931770755,
 //            "shoflex" to 0.6162105709567219,
@@ -90,7 +91,7 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
 //            "kneeflex" to 0.9651127014683116
 
 
-       // )
+        // )
 
         private val COEFFICIENTS: HashMap<String, DoubleArray> = hashMapOf(
             "shoabd" to doubleArrayOf(0.0, 5.08856581e-01, 7.38623277e-03, -4.88007171e-05),
@@ -131,6 +132,44 @@ class MoveNet(private val interpreter: Interpreter, private var gpuDelegate: Gpu
         fun create(context: Context, device: Device): MoveNet =
             create(context, device, ModelType.Lightning)
     }
+    fun getModelMetadata(): String {
+        val stringBuilder = StringBuilder()
+
+        // Add information about the model
+        stringBuilder.append("Input tensor count: ${interpreter.inputTensorCount}\n")
+        stringBuilder.append("Output tensor count: ${interpreter.outputTensorCount}\n")
+
+        // Print input tensor details
+        for (inputIndex in 0 until interpreter.inputTensorCount) {
+            val inputTensor = interpreter.getInputTensor(inputIndex)
+            stringBuilder.append("Input $inputIndex:\n")
+            stringBuilder.append("  Name: ${inputTensor.name()}\n")
+            stringBuilder.append("  DataType: ${inputTensor.dataType()}\n")
+            stringBuilder.append("  Shape: ${inputTensor.shape().contentToString()}\n")
+        }
+
+        // Print output tensor details
+        for (outputIndex in 0 until interpreter.outputTensorCount) {
+            val outputTensor = interpreter.getOutputTensor(outputIndex)
+            stringBuilder.append("Output $outputIndex:\n")
+            stringBuilder.append("  Name: ${outputTensor.name()}\n")
+            stringBuilder.append("  DataType: ${outputTensor.dataType()}\n")
+            stringBuilder.append("  Shape: ${outputTensor.shape().contentToString()}\n")
+        }
+
+
+        return stringBuilder.toString()
+    }
+    init {
+        try {
+            // Call the getModelMetadata function during initialization
+            val metadata = getModelMetadata()
+            Log.d("Tag", "Model Metadata:\n$metadata")
+        } catch (e: Exception) {
+            Log.e("Tag", "Error initializing and getting model metadata: ${e.message}", e)
+        }
+    }
+
 
     private var cropRegion: RectF? = null
     private var lastInferenceTimeNanos: Long = -1
